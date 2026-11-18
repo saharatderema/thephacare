@@ -1,0 +1,273 @@
+/* ============================================================
+   MIND-CARE THEPHA : Shared UI Stylesheet
+   Mental Health & SMI-V Community Care Information System
+   ใช้ร่วมกันทุกหน้าใน pages/smi/ (dashboard / data / gis)
+   ครอบคลุม 2 กลุ่มผู้ป่วย : จิตเวช (PSY) และ SMI-V
+   ============================================================ */
+
+/* ============ DESIGN TOKENS ============ */
+:root {
+    --psy: #6D5BC4; --psy-light: #8B7BD8; --psy-dark: #5A4AA8;
+    --navy: #1A365D; --ink: #0F172A; --muted: #64748B;
+    --line: #E2E8F0; --surface: #FFFFFF; --bg: #F1F5F9; --radius: 16px;
+    --shadow-sm: 0 1px 2px rgba(15,23,42,.04), 0 1px 3px rgba(15,23,42,.06);
+    --shadow-md: 0 4px 12px rgba(15,23,42,.08), 0 2px 4px rgba(15,23,42,.04);
+    --shadow-lg: 0 12px 32px rgba(15,23,42,.12), 0 4px 8px rgba(15,23,42,.06);
+}
+
+* { margin:0; padding:0; box-sizing:border-box; }
+
+body {
+    font-family:'Kanit',sans-serif; font-size:16px; color:var(--ink);
+    background:var(--bg); min-height:100vh; -webkit-font-smoothing:antialiased;
+}
+
+/* ============ HEADER ============ */
+.gradient-bg {
+    background:
+        radial-gradient(1200px 400px at 10% -10%, rgba(139,123,216,.28), transparent 60%),
+        linear-gradient(135deg, #1E293B 0%, #0F172A 55%, #020617 100%);
+}
+.glass-effect {
+    background:rgba(255,255,255,.08); backdrop-filter:blur(14px) saturate(140%);
+    border:1px solid rgba(255,255,255,.14); border-radius:14px;
+}
+
+/* ============ LAYOUT ============ */
+.main-content { margin-left:288px; transition:margin-left .3s ease; }
+@media (max-width:1024px) { .main-content { margin-left:0; } }
+
+/* ============ CARD ============ */
+.card {
+    background:var(--surface); border:1px solid var(--line);
+    border-radius:var(--radius); box-shadow:var(--shadow-sm);
+    transition:box-shadow .25s ease, transform .25s ease;
+}
+.card-hover:hover { box-shadow:var(--shadow-lg); transform:translateY(-3px); }
+
+/* ============ NAV TILE (3 ปุ่มนำทาง) ============ */
+.nav-tile {
+    display:flex; align-items:center; gap:1rem; padding:1.25rem;
+    background:var(--surface); border:2px solid var(--line);
+    border-radius:var(--radius); box-shadow:var(--shadow-sm);
+    transition:all .25s cubic-bezier(.4,0,.2,1);
+}
+.nav-tile:hover { transform:translateY(-4px); box-shadow:var(--shadow-lg); border-color:currentColor; }
+.nav-tile:hover .nav-tile__icon { transform:scale(1.08) rotate(-4deg); }
+.nav-tile:hover .nav-tile__arrow { transform:translateX(4px); opacity:1; }
+.nav-tile.is-current { border-color:currentColor; box-shadow:0 0 0 4px rgba(109,91,196,.10), var(--shadow-md); }
+.nav-tile__icon {
+    width:52px; height:52px; flex-shrink:0;
+    display:inline-flex; align-items:center; justify-content:center;
+    border-radius:14px; color:#fff; font-size:21px;
+    box-shadow:0 4px 12px rgba(15,23,42,.16);
+    transition:transform .3s cubic-bezier(.34,1.56,.64,1);
+}
+.nav-tile__arrow { color:#CBD5E1; transition:all .25s ease; opacity:.7; }
+
+/* ============ FILTER CHIP ============ */
+.chip {
+    display:inline-flex; align-items:center; gap:.45rem;
+    padding:.55rem 1.05rem; border-radius:999px;
+    border:2px solid var(--line); background:#fff;
+    font-size:.875rem; font-weight:500; color:var(--muted);
+    cursor:pointer; user-select:none; transition:all .2s ease;
+}
+.chip:hover { transform:translateY(-2px); border-color:#CBD5E1; color:var(--ink); box-shadow:var(--shadow-sm); }
+.chip:focus-visible { outline:3px solid rgba(109,91,196,.35); outline-offset:2px; }
+.chip.is-on { color:#fff; border-color:transparent; box-shadow:0 4px 12px rgba(15,23,42,.18); transform:translateY(-2px); }
+.chip__dot { width:10px; height:10px; border-radius:999px; box-shadow:inset 0 0 0 2px rgba(255,255,255,.65); }
+.chip:not(.is-on) .chip__dot { box-shadow:none; }
+
+/* ============ STAT CARD ============ */
+.stat {
+    position:relative; padding:1.35rem; background:var(--surface);
+    border:1px solid var(--line); border-radius:var(--radius);
+    box-shadow:var(--shadow-sm); overflow:hidden;
+    transition:all .3s cubic-bezier(.4,0,.2,1);
+}
+.stat::before { content:''; position:absolute; inset:0 auto 0 0; width:5px; background:var(--accent,var(--psy)); }
+.stat::after {
+    content:''; position:absolute; top:-30%; right:-12%;
+    width:150px; height:150px; border-radius:999px;
+    background:var(--accent,var(--psy)); opacity:.06; transition:transform .4s ease;
+}
+.stat:hover { transform:translateY(-5px); box-shadow:var(--shadow-lg); }
+.stat:hover::after { transform:scale(1.5); }
+.stat__icon {
+    width:48px; height:48px; flex-shrink:0;
+    display:inline-flex; align-items:center; justify-content:center;
+    border-radius:14px; color:#fff; font-size:19px;
+    background:var(--accent,var(--psy)); box-shadow:0 4px 12px var(--glow,rgba(109,91,196,.35));
+}
+.stat__value { font-size:2rem; font-weight:800; line-height:1.1; letter-spacing:-.02em; }
+.stat__label { font-size:.72rem; font-weight:600; color:var(--muted); text-transform:uppercase; letter-spacing:.04em; }
+.meter { height:5px; border-radius:999px; background:#E2E8F0; overflow:hidden; margin-top:.6rem; }
+.meter > i { display:block; height:100%; border-radius:999px; background:var(--accent,var(--psy)); }
+
+/* ============ TABLE / LEGEND ============ */
+.triage-dot { width:10px; height:10px; border-radius:999px; display:inline-block; flex-shrink:0; }
+.legend-item {
+    display:inline-flex; align-items:center; gap:.4rem;
+    padding:.35rem .7rem; border-radius:10px; font-size:.78rem; font-weight:600;
+    transition:transform .2s ease;
+}
+.legend-item:hover { transform:translateY(-2px); }
+.table-scroll { overflow-x:auto; -webkit-overflow-scrolling:touch; }
+table.dt { width:100%; border-collapse:separate; border-spacing:0; }
+table.dt thead th {
+    position:sticky; top:0; z-index:1; background:#F8FAFC; color:#475569;
+    font-size:.74rem; font-weight:700; text-transform:uppercase; letter-spacing:.04em;
+    padding:.85rem 1rem; text-align:left; white-space:nowrap; border-bottom:1px solid var(--line);
+}
+table.dt tbody td { padding:.85rem 1rem; font-size:.9rem; border-bottom:1px solid #F1F5F9; }
+table.dt tbody tr { transition:background .15s ease; }
+table.dt tbody tr:hover { background:#F8F7FF; }
+.pill {
+    display:inline-flex; align-items:center; gap:.35rem;
+    padding:.25rem .65rem; border-radius:999px; font-size:.74rem;
+    font-weight:600; white-space:nowrap;
+}
+
+/* ============ BUTTONS ============ */
+.btn {
+    display:inline-flex; align-items:center; justify-content:center; gap:.5rem;
+    padding:.6rem 1.1rem; border-radius:12px; font-size:.875rem; font-weight:600;
+    cursor:pointer; border:1px solid transparent; transition:all .2s ease;
+}
+.btn:focus-visible { outline:3px solid rgba(109,91,196,.4); outline-offset:2px; }
+.btn-primary { background:var(--psy); color:#fff; box-shadow:0 4px 12px rgba(109,91,196,.3); }
+.btn-primary:hover { background:var(--psy-dark); transform:translateY(-2px); box-shadow:0 6px 18px rgba(109,91,196,.4); }
+.btn-ghost { background:#fff; color:var(--muted); border-color:var(--line); }
+.btn-ghost:hover { background:#F8FAFC; color:var(--ink); border-color:#CBD5E1; }
+
+/* ============ FORM CONTROL ============ */
+.field {
+    width:100%; background:#fff; border:1px solid var(--line);
+    border-radius:12px; padding:.6rem 1rem; font-size:16px; color:var(--ink);
+    transition:border-color .2s ease, box-shadow .2s ease;
+}
+.field:hover { border-color:#CBD5E1; }
+.field:focus { outline:none; border-color:var(--psy); box-shadow:0 0 0 3px rgba(109,91,196,.18); }
+.field::placeholder { color:#94A3B8; }
+select.field { cursor:pointer; }
+.form-label { display:block; font-size:.82rem; font-weight:600; color:var(--muted); margin-bottom:.3rem; }
+
+/* ============ MODAL ============ */
+.modal-backdrop {
+    position:fixed; inset:0; background:rgba(15,23,42,.6); z-index:50;
+    overflow-y:auto; backdrop-filter:blur(3px);
+}
+.modal-box {
+    background:#fff; border-radius:20px; box-shadow:var(--shadow-lg);
+    width:100%; max-width:56rem; max-height:90vh; overflow-y:auto;
+}
+.modal-head {
+    position:sticky; top:0; z-index:2; display:flex;
+    align-items:center; justify-content:space-between;
+    padding:1rem 1.5rem; border-radius:20px 20px 0 0;
+}
+.modal-body { padding:1.5rem; }
+
+/* ============ PRIVACY ============ */
+.privacy-mask {
+    color:transparent !important; text-shadow:0 0 9px rgba(26,54,93,.55);
+    border-radius:4px; user-select:none; cursor:pointer;
+}
+body.privacy-on .privacy-mask { color:var(--navy) !important; text-shadow:none; }
+
+/* ============ ANIMATION ============ */
+@keyframes fadeInUp { from{opacity:0;transform:translateY(18px);} to{opacity:1;transform:translateY(0);} }
+@keyframes pulseRing { 0%,100%{box-shadow:0 0 0 0 rgba(16,185,129,.5);} 50%{box-shadow:0 0 0 6px rgba(16,185,129,0);} }
+.animate-fadeInUp { animation:fadeInUp .55s cubic-bezier(.4,0,.2,1) both; }
+.live-dot { width:8px; height:8px; border-radius:999px; background:#10B981; animation:pulseRing 2s infinite; }
+
+::-webkit-scrollbar { width:9px; height:9px; }
+::-webkit-scrollbar-track { background:transparent; }
+::-webkit-scrollbar-thumb { background:#CBD5E1; border-radius:999px; }
+::-webkit-scrollbar-thumb:hover { background:#94A3B8; }
+
+@media (prefers-reduced-motion: reduce) {
+    *,*::before,*::after { animation-duration:.01ms !important; transition-duration:.01ms !important; }
+}
+
+/* ============================================================
+   RESPONSIVE — รองรับทุกขนาดหน้าจอ
+   ------------------------------------------------------------
+   ใช้ร่วมกันทุกหน้าใน pages/smi/
+   ลำดับชั้น : 1) กันล้นจอ  2) ปรับตาราง  3) ย่อหน้าจอเล็ก
+   ============================================================ */
+
+/* ---------- 1) กันเนื้อหาล้นแนวนอนทุกหน้า ---------- */
+html, body { max-width:100%; overflow-x:hidden; }
+img, svg, video, canvas { max-width:100%; height:auto; }
+
+/* ป้องกัน long text / idcard ไม่ให้ดันการ์ดล้น */
+.break-anywhere { overflow-wrap:anywhere; word-break:break-word; }
+
+/* หน้าจอเล็ก : ลด padding ของการ์ดและพื้นที่หลัก */
+@media (max-width:640px) {
+    .main-content > main,
+    .main-content > div { padding:1rem .875rem !important; }
+    .card { border-radius:12px; }
+}
+
+/* ---------- 2) ตารางบนจอเล็ก ---------- */
+.table-scroll, .overflow-x-auto {
+    overflow-x:auto;
+    -webkit-overflow-scrolling:touch;
+    overscroll-behavior-x:contain;
+}
+/* เตือนผู้ใช้ว่าตารางเลื่อนแนวนอนได้ (JS ใส่คลาส .is-scrollable ให้) */
+.table-scroll { position:relative; }
+.table-scroll.is-scrollable::after {
+    content:''; position:absolute; top:0; right:0; bottom:0; width:28px;
+    background:linear-gradient(to left, rgba(15,23,42,.12), rgba(15,23,42,0));
+    pointer-events:none;
+}
+@media (max-width:768px) {
+    /* เดิม min-width:640px ตายตัว → จอ 360px มีที่แค่ ~330px
+       ทำให้เนื้อหาหลุดจอ 310px และคอลัมน์ปุ่มท้ายหลุดไปเลย
+       min(640px,100%) ยอมให้ตารางหดตามกล่อง แต่ยังกว้างอย่างน้อยเท่ากล่อง */
+    table.dt { min-width:min(640px, 100%); }
+    table.dt thead th,
+    table.dt tbody td { padding:.65rem .7rem; font-size:.82rem; }
+    /* ซ่อนคอลัมน์รองบนมือถือ (คอลัมน์ที่ 4 เป็นต้นไป) */
+    table.dt.responsive-hide-col td:nth-child(n+4),
+    table.dt.responsive-hide-col th:nth-child(n+4) { display:none; }
+}
+
+/* ---------- 3) ฟอร์ม ---------- */
+@media (max-width:640px) {
+    input, select, textarea { font-size:16px !important; }  /* กัน iOS ซูมอัตโนมัติ */
+    .field { width:100%; }
+}
+
+/* ---------- 4) หน้าจอเล็กมาก (มือถือ) ---------- */
+@media (max-width:480px) {
+    .stat__value { font-size:1.5rem; }
+    .stat__label { font-size:.68rem; }
+    .btn { padding:.6rem .9rem; font-size:.85rem; }
+    /* ซ่อนคอลัมน์รองที่ตั้งใจไว้ (th/td ที่มีคลาสนี้) เพื่อให้ตารางพอดีจอ
+       (ไม่ซ่อนคอลัมน์ปุ่ม action เพื่อให้ผู้ใช้กดได้บนมือถือ) */
+    table.dt th.col-opt,
+    table.dt td.col-opt { display:none; }
+    /* หัวตารางเดิม nowrap ทำให้หดไม่ได้ → ยอมให้ตัดบรรทัดเพื่อให้พอดีจอ */
+    table.dt thead th { white-space:normal; }
+    /* ลด padding อีกชั้นให้เนื้อหาพอดีมือถือ */
+    table.dt thead th,
+    table.dt tbody td { padding:.55rem .5rem; font-size:.78rem; }
+}
+
+/* ---------- 5) ป้องกันการพิมพ์ ---------- */
+@media print {
+    .no-print, .sidebar-voc, header.gradient-bg .btn { display:none !important; }
+    .main-content { margin-left:0 !important; }
+    body { background:#fff; }
+    .card { box-shadow:none; border:1px solid #ddd; }
+}
+
+/* ---------- 6) รองรับการขยาย/ย่อจอ ---------- */
+@media (hover:none) {
+    .nav-tile:hover, .stat:hover, .chip:hover { transform:none; }
+}

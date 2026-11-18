@@ -1,0 +1,1043 @@
+<?php
+session_start();
+
+// ตรวจสอบ path ของไฟล์ db.php ให้ถูกต้อง
+require_once __DIR__ . '/../../db.php';
+
+// ตรวจสอบการล็อกอิน
+if (!isset($_SESSION['user_id'])) {
+    header("Location: login.php");
+    exit();
+}
+
+// ตรวจสอบสิทธิ์ผู้ดูแลระบบ
+if ($_SESSION['user_role'] != 'admin') {
+    header("Location: unauthorized.php");
+    exit();
+}
+
+// ใช้ $pdo จากไฟล์ db.php โดยตรง
+$conn = $pdo;
+
+// ฟังก์ชันจัดการข้อผิดพลาด
+function handleError($message) {
+    $_SESSION['error_message'] = $message;
+    header("Location: setup_user.php");
+    exit();
+}
+
+function handleSuccess($message) {
+    $_SESSION['success_message'] = $message;
+    header("Location: setup_user.php");
+    exit();
+}
+
+// ฟังก์ชันดึงข้อมูลสถิติแดชบอร์ด
+function getDashboardStats($conn) {
+    $stats = [];
+    
+    // จำนวนผู้ใช้ทั้งหมด
+    $sql = "SELECT COUNT(*) as total FROM users";
+    $stmt = $conn->prepare($sql);
+    $stmt->execute();
+    $stats['total_users'] = $stmt->fetch()['total'];
+    
+    // ผู้ใช้ที่เปิดใช้งาน
+    $sql = "SELECT COUNT(*) as total FROM users WHERE status_active = 'yes'";
+    $stmt = $conn->prepare($sql);
+    $stmt->execute();
+    $stats['active_users'] = $stmt->fetch()['total'];
+    
+    // ผู้ใช้ที่ปิดใช้งาน
+    $sql = "SELECT COUNT(*) as total FROM users WHERE status_active = 'no'";
+    $stmt = $conn->prepare($sql);
+    $stmt->execute();
+    $stats['inactive_users'] = $stmt->fetch()['total'];
+    
+    // จำนวน admin
+    $sql = "SELECT COUNT(*) as total FROM users WHERE status_user = 'admin'";
+    $stmt = $conn->prepare($sql);
+    $stmt->execute();
+    $stats['admin_users'] = $stmt->fetch()['total'];
+    
+    // จำนวนผู้ใช้ทั่วไป
+    $sql = "SELECT COUNT(*) as total FROM users WHERE status_user = 'user'";
+    $stmt = $conn->prepare($sql);
+    $stmt->execute();
+    $stats['regular_users'] = $stmt->fetch()['total'];
+    
+    // จำนวนโรงพยาบาล
+    $sql = "SELECT COUNT(*) as total FROM hospital";
+    $stmt = $conn->prepare($sql);
+    $stmt->execute();
+    $stats['total_hospitals'] = $stmt->fetch()['total'];
+    
+    // ผู้ใช้ใหม่ 7 วันล่าสุด
+    $sql = "SELECT COUNT(*) as total FROM users WHERE created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)";
+    $stmt = $conn->prepare($sql);
+    $stmt->execute();
+    $stats['new_users_week'] = $stmt->fetch()['total'];
+    
+    return $stats;
+}
+
+// ฟังก์ชันดึงข้อมูลผู้ใช้งานล่าสุด
+function getRecentUsers($conn, $limit = 5) {
+    $sql = "SELECT u.*, h.hosp_name 
+            FROM users u 
+            LEFT JOIN hospital h ON u.hospcode = h.hospcode 
+            ORDER BY u.created_at DESC 
+            LIMIT ?";
+    $stmt = $conn->prepare($sql);
+    $stmt->execute([$limit]);
+    return $stmt->fetchAll(PDO::FETCH_ASSOC);
+}
+
+// ฟังก์ชันดึงข้อมูลผู้ใช้งานตามโรงพยาบาล
+function getUsersByHospital($conn) {
+    $sql = "SELECT h.hosp_name, COUNT(u.id) as user_count 
+            FROM hospital h 
+            LEFT JOIN users u ON h.hospcode = u.hospcode 
+            GROUP BY h.hospcode, h.hosp_name 
+            ORDER BY user_count DESC";
+    $stmt = $conn->prepare($sql);
+    $stmt->execute();
+    return $stmt->fetchAll(PDO::FETCH_ASSOC);
+}
+
+// ฟังก์ชันดึงข้อมูลกิจกรรมล่าสุด
+function getRecentActivity($conn, $limit = 10) {
+    $sql = "SELECT id, name, email, d_update as last_activity 
+            FROM users 
+            WHERE d_update IS NOT NULL 
+            ORDER BY d_update DESC 
+            LIMIT ?";
+    $stmt = $conn->prepare($sql);
+    $stmt->execute([$limit]);
+    return $stmt->fetchAll(PDO::FETCH_ASSOC);
+}
+
+// ดึงข้อมูลทั้งหมด
+$stats = getDashboardStats($conn);
+$recent_users = getRecentUsers($conn, 5);
+$hospital_users = getUsersByHospital($conn);
+$recent_activity = getRecentActivity($conn, 10);
+?>
+
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>แดชบอร์ด - ระบบจัดการผู้ใช้งาน</title>
+    <!-- Google Fonts - Kanit (Thai Support) -->
+    <link href="https://fonts.googleapis.com/css2?family=Kanit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Bootstrap 5 CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Font Awesome -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <!-- ApexCharts CSS -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/apexcharts@3.35.0/dist/apexcharts.css">
+    <style>
+        :root {
+            --primary-gradient: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            --success-gradient: linear-gradient(135deg, #28a745, #20c997);
+            --warning-gradient: linear-gradient(135deg, #ffc107, #fd7e14);
+            --info-gradient: linear-gradient(135deg, #17a2b8, #20c997);
+            --danger-gradient: linear-gradient(135deg, #dc3545, #fd7e14);
+            --font-kanit: 'Kanit', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        }
+
+        * {
+            font-family: var(--font-kanit) !important;
+        }
+
+        /* ===== Font Awesome Icon Enhancements ===== */
+        .icon-wrapper {
+            display: inline-flex !important;
+            align-items: center;
+            justify-content: center;
+            width: 48px;
+            height: 48px;
+            border-radius: 12px;
+            font-size: 1.4rem;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+            flex-shrink: 0;
+            color: white !important;
+        }
+
+        .icon-wrapper:hover {
+            transform: scale(1.1) rotate(3deg);
+            box-shadow: 0 8px 20px rgba(0,0,0,0.15);
+        }
+
+        .icon-wrapper.sm { width: 36px; height: 36px; font-size: 1rem; }
+        .icon-wrapper.xs { width: 28px; height: 28px; font-size: 0.85rem; }
+
+        .icon-primary { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important; }
+        .icon-success { background: linear-gradient(135deg, #28a745, #20c997) !important; }
+        .icon-warning { background: linear-gradient(135deg, #ffc107, #fd7e14) !important; }
+        .icon-info { background: linear-gradient(135deg, #17a2b8, #20c997) !important; }
+        .icon-danger { background: linear-gradient(135deg, #dc3545, #fd7e14) !important; }
+        .icon-purple { background: linear-gradient(135deg, #6f42c1, #a855f7) !important; }
+        .icon-teal { background: linear-gradient(135deg, #14b8a6, #0d9488) !important; }
+        .icon-orange { background: linear-gradient(135deg, #f97316, #ea580c) !important; }
+
+        .text-icon {
+            display: inline-flex !important;
+            align-items: center;
+            justify-content: center;
+            width: 22px;
+            height: 22px;
+            border-radius: 6px;
+            font-size: 0.85rem;
+            margin-right: 8px;
+            vertical-align: middle;
+            flex-shrink: 0;
+            color: white !important;
+        }
+
+        .text-icon.sm { width: 18px; height: 18px; font-size: 0.75rem; }
+
+        .text-icon.icon-primary { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important; }
+        .text-icon.icon-success { background: linear-gradient(135deg, #28a745, #20c997) !important; }
+        .text-icon.icon-warning { background: linear-gradient(135deg, #ffc107, #fd7e14) !important; }
+        .text-icon.icon-info { background: linear-gradient(135deg, #17a2b8, #20c997) !important; }
+        .text-icon.icon-danger { background: linear-gradient(135deg, #dc3545, #fd7e14) !important; }
+
+        .card-icon {
+            width: 56px;
+            height: 56px;
+            border-radius: 16px;
+            font-size: 1.6rem;
+            display: flex !important;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 6px 20px rgba(0,0,0,0.12);
+            transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            flex-shrink: 0;
+            color: white !important;
+        }
+
+        .card-icon:hover {
+            transform: scale(1.12) rotate(-2deg);
+            box-shadow: 0 12px 30px rgba(0,0,0,0.18);
+        }
+
+        .card-icon.icon-primary { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important; }
+        .card-icon.icon-success { background: linear-gradient(135deg, #28a745, #20c997) !important; }
+        .card-icon.icon-warning { background: linear-gradient(135deg, #ffc107, #fd7e14) !important; }
+        .card-icon.icon-info { background: linear-gradient(135deg, #17a2b8, #20c997) !important; }
+        .card-icon.icon-danger { background: linear-gradient(135deg, #dc3545, #fd7e14) !important; }
+
+        .section-icon {
+            display: inline-flex !important;
+            align-items: center;
+            justify-content: center;
+            width: 40px;
+            height: 40px;
+            border-radius: 10px;
+            font-size: 1.1rem;
+            margin-right: 12px;
+            vertical-align: middle;
+            flex-shrink: 0;
+            box-shadow: 0 3px 10px rgba(0,0,0,0.08);
+            transition: all 0.3s ease;
+            color: white !important;
+        }
+
+        .section-icon:hover {
+            transform: scale(1.08);
+            box-shadow: 0 6px 16px rgba(0,0,0,0.12);
+        }
+
+        .section-icon.icon-primary { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important; }
+        .section-icon.icon-success { background: linear-gradient(135deg, #28a745, #20c997) !important; }
+        .section-icon.icon-warning { background: linear-gradient(135deg, #ffc107, #fd7e14) !important; }
+        .section-icon.icon-info { background: linear-gradient(135deg, #17a2b8, #20c997) !important; }
+        .section-icon.icon-danger { background: linear-gradient(135deg, #dc3545, #fd7e14) !important; }
+
+        .action-icon {
+            display: inline-flex !important;
+            align-items: center;
+            justify-content: center;
+            width: 44px;
+            height: 44px;
+            border-radius: 12px;
+            font-size: 1.2rem;
+            transition: all 0.3s ease;
+            text-decoration: none;
+            flex-shrink: 0;
+            color: white !important;
+        }
+
+        .action-icon span {
+            white-space: nowrap;
+            opacity: 1;
+            transition: opacity 0.2s ease;
+        }
+
+        .action-icon:hover {
+            transform: translateY(-3px) scale(1.05);
+            box-shadow: 0 8px 20px rgba(0,0,0,0.15);
+            text-decoration: none;
+        }
+
+        .action-icon.icon-primary { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important; }
+        .action-icon.icon-success { background: linear-gradient(135deg, #28a745, #20c997) !important; }
+        .action-icon.icon-warning { background: linear-gradient(135deg, #ffc107, #fd7e14) !important; }
+        .action-icon.icon-danger { background: linear-gradient(135deg, #dc3545, #fd7e14) !important; }
+
+        @media (max-width: 576px) {
+            .action-icon span {
+                display: none;
+            }
+            .action-icon {
+                width: 48px;
+                height: 48px;
+            }
+        }
+
+        .sidebar .nav-link i {
+            width: 24px;
+            height: 24px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.05rem;
+            transition: all 0.3s ease;
+            flex-shrink: 0;
+        }
+
+        .sidebar .nav-link:hover i {
+            transform: scale(1.15);
+            text-shadow: 0 0 8px rgba(255,255,255,0.5);
+        }
+
+        .table-icon {
+            width: 32px;
+            height: 32px;
+            border-radius: 8px;
+            display: inline-flex !important;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.95rem;
+            margin-right: 8px;
+            vertical-align: middle;
+            flex-shrink: 0;
+            color: white !important;
+        }
+
+        .timeline-icon {
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            display: flex !important;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.95rem;
+            box-shadow: 0 3px 10px rgba(0,0,0,0.1);
+            flex-shrink: 0;
+            color: white !important;
+        }
+
+        .timeline-icon.icon-primary { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important; }
+        .timeline-icon.icon-success { background: linear-gradient(135deg, #28a745, #20c997) !important; }
+        .timeline-icon.icon-warning { background: linear-gradient(135deg, #ffc107, #fd7e14) !important; }
+        .timeline-icon.icon-info { background: linear-gradient(135deg, #17a2b8, #20c997) !important; }
+        .timeline-icon.icon-danger { background: linear-gradient(135deg, #dc3545, #fd7e14) !important; }
+
+        .modal-icon {
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            display: inline-flex !important;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.4rem;
+            margin-bottom: 1rem;
+            box-shadow: 0 6px 20px rgba(0,0,0,0.12);
+            flex-shrink: 0;
+            color: white !important;
+        }
+
+        .modal-icon.icon-info { background: linear-gradient(135deg, #17a2b8, #20c997) !important; }
+
+        .export-icon {
+            width: 48px;
+            height: 48px;
+            border-radius: 12px;
+            display: flex !important;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.3rem;
+            transition: all 0.3s ease;
+            flex-shrink: 0;
+            color: white !important;
+        }
+
+        .export-icon:hover {
+            transform: scale(1.1);
+            box-shadow: 0 8px 24px rgba(0,0,0,0.15);
+        }
+
+        .export-icon.icon-success { background: linear-gradient(135deg, #28a745, #20c997) !important; }
+        .export-icon.icon-danger { background: linear-gradient(135deg, #dc3545, #fd7e14) !important; }
+        .export-icon.icon-primary { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important; }
+
+        @keyframes pulse-ring {
+            0% { transform: scale(1); opacity: 0.8; }
+            50% { transform: scale(1.15); opacity: 0.4; }
+            100% { transform: scale(1); opacity: 0.8; }
+        }
+
+        .pulse-ring {
+            position: relative;
+        }
+
+        .pulse-ring::before {
+            content: '';
+            position: absolute;
+            inset: -4px;
+            border-radius: inherit;
+            background: inherit;
+            animation: pulse-ring 2s ease-out infinite;
+            z-index: -1;
+        }
+
+        @keyframes icon-bounce {
+            0%, 20%, 50%, 80%, 100% { transform: translateY(0); }
+            40% { transform: translateY(-6px); }
+            60% { transform: translateY(-3px); }
+        }
+
+        .icon-bounce:hover {
+            animation: icon-bounce 0.8s ease;
+        }
+
+        /* Fix for badge with icon */
+        .badge .text-icon {
+            margin-right: 6px;
+            margin-left: -4px;
+        }
+
+        /* Ensure icons in buttons don't get squished */
+        .btn .text-icon,
+        .btn .icon-wrapper {
+            flex-shrink: 0;
+        }
+
+        @keyframes icon-bounce {
+            0%, 20%, 50%, 80%, 100% { transform: translateY(0); }
+            40% { transform: translateY(-6px); }
+            60% { transform: translateY(-3px); }
+        }
+
+        .icon-bounce:hover {
+            animation: icon-bounce 0.8s ease;
+        }
+        
+        .sidebar {
+            background: var(--primary-gradient);
+            min-height: 100vh;
+            color: white;
+            box-shadow: 2px 0 10px rgba(0,0,0,0.1);
+        }
+        
+        .sidebar .nav-link {
+            color: rgba(255,255,255,.9);
+            border-radius: 8px;
+            margin: 2px 0;
+            transition: all 0.3s ease;
+        }
+        
+        .sidebar .nav-link:hover {
+            color: white;
+            background: rgba(255,255,255,0.1);
+            transform: translateX(5px);
+        }
+        
+        .sidebar .nav-link.active {
+            background: rgba(255,255,255,0.2);
+            color: white;
+            font-weight: 600;
+        }
+        
+        .stat-card {
+            border: none;
+            border-radius: 15px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+            transition: all 0.3s ease;
+            overflow: hidden;
+            color: white;
+            position: relative;
+        }
+        
+        .stat-card:hover {
+            transform: translateY(-8px);
+            box-shadow: 0 8px 25px rgba(0,0,0,0.15);
+        }
+        
+        .stat-card.bg-primary {
+            background: var(--primary-gradient) !important;
+        }
+        
+        .stat-card.bg-success {
+            background: var(--success-gradient) !important;
+        }
+        
+        .stat-card.bg-warning {
+            background: var(--warning-gradient) !important;
+        }
+        
+        .stat-card.bg-info {
+            background: var(--info-gradient) !important;
+        }
+        
+        .stat-card.bg-danger {
+            background: var(--danger-gradient) !important;
+        }
+        
+        .stat-card .card-icon {
+            position: absolute;
+            right: 20px;
+            top: 20px;
+            font-size: 3em;
+            opacity: 0.2;
+        }
+        
+        .dashboard-widget {
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+            padding: 20px;
+            margin-bottom: 20px;
+            transition: all 0.3s ease;
+        }
+        
+        .dashboard-widget:hover {
+            box-shadow: 0 8px 25px rgba(0,0,0,0.15);
+        }
+        
+        .dashboard-widget .widget-header {
+            border-bottom: 2px solid #f8f9fa;
+            padding-bottom: 10px;
+            margin-bottom: 15px;
+        }
+        
+        .user-avatar {
+            width: 45px;
+            height: 45px;
+            border-radius: 50%;
+            background: var(--primary-gradient);
+            color: white;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-size: 1.1em;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+        }
+        
+        .activity-item {
+            padding: 10px 0;
+            border-bottom: 1px solid #f8f9fa;
+            transition: all 0.3s ease;
+        }
+        
+        .activity-item:hover {
+            background: #f8f9fa;
+            border-radius: 8px;
+            padding-left: 10px;
+        }
+        
+        .hospital-progress {
+            margin-bottom: 10px;
+        }
+        
+        .hospital-progress .progress {
+            height: 10px;
+            border-radius: 5px;
+            margin-top: 5px;
+        }
+        
+        .quick-actions {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-top: 20px;
+        }
+        
+        .action-btn {
+            padding: 15px;
+            background: white;
+            border: 2px solid #e9ecef;
+            border-radius: 10px;
+            text-align: center;
+            transition: all 0.3s ease;
+            text-decoration: none;
+            color: #333;
+        }
+        
+        .action-btn:hover {
+            border-color: #667eea;
+            transform: translateY(-3px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.2);
+            color: #667eea;
+        }
+        
+        .action-btn i {
+            font-size: 2em;
+            margin-bottom: 10px;
+            display: block;
+        }
+        
+        .chart-container {
+            height: 300px;
+            margin-top: 20px;
+        }
+        
+        .status-badge {
+            padding: 5px 15px;
+            border-radius: 20px;
+            font-size: 0.8em;
+            font-weight: 600;
+        }
+        
+        .nav-link-home {
+            color: #ffd700 !important;
+            background: rgba(255,215,0,0.1);
+            border-radius: 8px;
+            margin-top: 20px !important;
+        }
+        
+        .nav-link-home:hover {
+            color: #ffed4e !important;
+            background: rgba(255,215,0,0.2);
+        }
+        
+        .page-title {
+            color: #2c3e50;
+            font-weight: 700;
+            text-shadow: 1px 1px 2px rgba(0,0,0,0.1);
+        }
+        
+        .user-name {
+            font-weight: 600;
+            color: #2c3e50;
+        }
+        
+        .user-email {
+            font-size: 0.9em;
+            color: #6c757d;
+        }
+    </style>
+</head>
+<body>
+    <div class="container-fluid">
+        <div class="row">
+            <!-- Sidebar -->
+            <!-- แทนที่ส่วน sidebar เดิมด้วยการ include จากไฟล์แยก -->
+            <?php include 'sidebar_setup.php'; ?>
+
+            <!-- Main Content -->
+            <main class="col-md-9 ms-sm-auto col-lg-10 px-md-4 py-4">
+                <!-- Header -->
+                <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-3 mb-4 border-bottom">
+                    <h1 class="h2 page-title">
+                        <span class="icon-wrapper icon-primary icon-bounce me-3">
+                            <i class="fas fa-tachometer-alt"></i>
+                        </span>
+                        แดชบอร์ดระบบจัดการ
+                    </h1>
+                    <div class="btn-toolbar">
+                        <div class="btn-group me-2">
+                            <span class="btn btn-sm btn-outline-secondary">
+                                <span class="text-icon icon-primary"><i class="fas fa-calendar"></i></span><?= date('d/m/Y') ?>
+                            </span>
+                            <span class="btn btn-sm btn-outline-secondary" id="current-time">
+                                <span class="text-icon icon-warning"><i class="fas fa-clock"></i></span><?= date('H:i') ?>
+                            </span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Alert Messages -->
+                <?php if (isset($_SESSION['success_message'])): ?>
+                    <div class="alert alert-success alert-dismissible fade show" role="alert">
+                        <span class="text-icon icon-success"><i class="fas fa-check-circle"></i></span>
+                        <?= $_SESSION['success_message'] ?>
+                        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                    </div>
+                    <?php unset($_SESSION['success_message']); ?>
+                <?php endif; ?>
+
+                <?php if (isset($_SESSION['error_message'])): ?>
+                    <div class="alert alert-danger alert-dismissible fade show" role="alert">
+                        <span class="text-icon icon-danger"><i class="fas fa-exclamation-triangle"></i></span>
+                        <?= $_SESSION['error_message'] ?>
+                        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                    </div>
+                    <?php unset($_SESSION['error_message']); ?>
+                <?php endif; ?>
+
+                <!-- Statistics Cards -->
+                <div class="row mb-4">
+                    <div class="col-md-3 mb-3">
+                        <div class="card stat-card bg-primary text-white">
+                            <div class="card-body">
+                                <div class="d-flex justify-content-between align-items-center">
+                                    <div>
+                                        <h2 class="mb-0"><?= $stats['total_users'] ?></h2>
+                                        <p class="mb-0 fw-medium">ผู้ใช้งานทั้งหมด</p>
+                                    </div>
+                                    <i class="fas fa-users card-icon icon-primary"></i>
+                                </div>
+                                <small class="opacity-75"><i class="fas fa-user-plus me-1"></i>+<?= $stats['new_users_week'] ?> คนใน 7 วันล่าสุด</small>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="col-md-3 mb-3">
+                        <div class="card stat-card bg-success text-white">
+                            <div class="card-body">
+                                <div class="d-flex justify-content-between align-items-center">
+                                    <div>
+                                        <h2 class="mb-0"><?= $stats['active_users'] ?></h2>
+                                        <p class="mb-0 fw-medium">เปิดใช้งาน</p>
+                                    </div>
+                                    <i class="fas fa-user-check card-icon icon-success"></i>
+                                </div>
+                                <small class="opacity-75"><i class="fas fa-chart-line me-1"></i><?= round(($stats['active_users']/$stats['total_users'])*100) ?>% ของทั้งหมด</small>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="col-md-3 mb-3">
+                        <div class="card stat-card bg-warning text-white">
+                            <div class="card-body">
+                                <div class="d-flex justify-content-between align-items-center">
+                                    <div>
+                                        <h2 class="mb-0"><?= $stats['admin_users'] ?></h2>
+                                        <p class="mb-0 fw-medium">ผู้ดูแลระบบ</p>
+                                    </div>
+                                    <i class="fas fa-user-shield card-icon icon-warning"></i>
+                                </div>
+                                <small class="opacity-75"><i class="fas fa-shield-alt me-1"></i><?= round(($stats['admin_users']/$stats['total_users'])*100) ?>% ของทั้งหมด</small>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="col-md-3 mb-3">
+                        <div class="card stat-card bg-info text-white">
+                            <div class="card-body">
+                                <div class="d-flex justify-content-between align-items-center">
+                                    <div>
+                                        <h2 class="mb-0"><?= $stats['total_hospitals'] ?></h2>
+                                        <p class="mb-0 fw-medium">หน่วยบริการ</p>
+                                    </div>
+                                    <i class="fas fa-hospital card-icon icon-info"></i>
+                                </div>
+                                <small class="opacity-75"><i class="fas fa-building me-1"></i>โรงพยาบาลในระบบ</small>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Quick Actions -->
+                <div class="dashboard-widget">
+                    <div class="widget-header">
+                        <h5>
+                            <span class="section-icon icon-warning"><i class="fas fa-bolt"></i></span>
+                            การดำเนินการด่วน
+                        </h5>
+                    </div>
+                    <div class="quick-actions">
+                        <a href="setup_user.php?action=add" class="action-icon icon-primary">
+                            <i class="fas fa-user-plus"></i>
+                            <span class="ms-3 d-none d-sm-inline">เพิ่มผู้ใช้ใหม่</span>
+                        </a>
+                        <a href="#" class="action-icon icon-success" data-bs-toggle="modal" data-bs-target="#exportModal">
+                            <i class="fas fa-file-export"></i>
+                            <span class="ms-3 d-none d-sm-inline">ส่งออกข้อมูล</span>
+                        </a>
+                        <a href="#" class="action-icon icon-warning">
+                            <i class="fas fa-chart-pie"></i>
+                            <span class="ms-3 d-none d-sm-inline">รายงานสถิติ</span>
+                        </a>
+                        <a href="#" class="action-icon icon-danger">
+                            <i class="fas fa-bell"></i>
+                            <span class="ms-3 d-none d-sm-inline">การแจ้งเตือน</span>
+                        </a>
+                    </div>
+                </div>
+
+                <div class="row">
+                    <!-- Recent Users -->
+                    <div class="col-lg-6 mb-4">
+                        <div class="dashboard-widget">
+                            <div class="widget-header">
+                                <h5>
+                                    <span class="section-icon icon-primary"><i class="fas fa-user-clock"></i></span>
+                                    ผู้ใช้งานล่าสุด
+                                </h5>
+                            </div>
+                            <div class="list-group">
+                                <?php foreach ($recent_users as $user): ?>
+                                <div class="list-group-item border-0 py-3">
+                                    <div class="d-flex align-items-center">
+                                        <div class="user-avatar me-3 bg-primary text-white rounded-circle d-flex align-items-center justify-content-center" style="width: 40px; height: 40px; font-weight: 600;">
+                                            <?= strtoupper(substr($user['name'], 0, 1)) ?>
+                                        </div>
+                                        <div class="flex-grow-1">
+                                            <div class="user-name"><?= htmlspecialchars($user['name']) ?></div>
+                                            <div class="user-email">
+                                                <span class="text-icon icon-primary sm"><i class="fas fa-envelope"></i></span><?= htmlspecialchars($user['email']) ?>
+                                            </div>
+                                            <small class="text-muted">
+                                                <span class="text-icon icon-info xs"><i class="fas fa-calendar"></i></span>
+                                                <?= date('d/m/Y H:i', strtotime($user['created_at'])) ?>
+                                            </small>
+                                        </div>
+                                        <span class="badge bg-<?= $user['status_active'] === 'yes' ? 'success' : 'danger' ?> px-3 py-2">
+                                            <span class="text-icon <?= $user['status_active'] === 'yes' ? 'icon-success' : 'icon-danger' ?> sm"><i class="fas fa-<?= $user['status_active'] === 'yes' ? 'check' : 'times' ?>"></i></span>
+                                            <?= $user['status_active'] === 'yes' ? 'เปิดใช้งาน' : 'ปิดใช้งาน' ?>
+                                        </span>
+                                    </div>
+                                </div>
+                                <?php endforeach; ?>
+                            </div>
+                            <a href="setup_user.php" class="btn btn-outline-primary btn-sm mt-3 w-100">
+                                <span class="text-icon icon-primary"><i class="fas fa-list"></i></span> ดูทั้งหมด <?= $stats['total_users'] ?> รายการ
+                            </a>
+                        </div>
+                    </div>
+
+                    <!-- Users by Hospital -->
+                    <div class="col-lg-6 mb-4">
+                        <div class="dashboard-widget">
+                            <div class="widget-header">
+                                <h5>
+                                    <span class="section-icon icon-success"><i class="fas fa-chart-bar"></i></span>
+                                    ผู้ใช้ตามหน่วยบริการ
+                                </h5>
+                            </div>
+                            <div class="hospital-progress-list">
+                                <?php 
+                                $max_users = max(array_column($hospital_users, 'user_count'));
+                                foreach ($hospital_users as $hospital):
+                                    if ($hospital['user_count'] > 0):
+                                        $percentage = $max_users > 0 ? ($hospital['user_count'] / $max_users) * 100 : 0;
+                                ?>
+                                <div class="hospital-progress">
+                                    <div class="d-flex justify-content-between align-items-center">
+                                        <span class="fw-medium">
+                                            <span class="text-icon icon-info sm"><i class="fas fa-hospital"></i></span>
+                                            <?= htmlspecialchars($hospital['hosp_name']) ?>
+                                        </span>
+                                        <span class="text-primary fw-bold"><?= $hospital['user_count'] ?> คน</span>
+                                    </div>
+                                    <div class="progress" style="height: 8px; border-radius: 4px;">
+                                        <div class="progress-bar bg-success rounded" 
+                                             role="progressbar" 
+                                             style="width: <?= $percentage ?>%">
+                                        </div>
+                                    </div>
+                                </div>
+                                <?php endif; endforeach; ?>
+                            </div>
+                        </div>
+
+                        <!-- Recent Activity -->
+                        <div class="dashboard-widget mt-4">
+                            <div class="widget-header">
+                                <h5>
+                                    <span class="section-icon icon-warning"><i class="fas fa-history"></i></span>
+                                    กิจกรรมล่าสุด
+                                </h5>
+                            </div>
+                            <div class="activity-list">
+                                <?php foreach ($recent_activity as $activity): ?>
+                                <div class="activity-item py-3 border-bottom last:border-0">
+                                    <div class="d-flex align-items-start">
+                                        <div class="timeline-icon icon-primary me-3">
+                                            <i class="fas fa-user-edit"></i>
+                                        </div>
+                                        <div class="flex-grow-1">
+                                            <div class="user-name"><?= htmlspecialchars($activity['name']) ?></div>
+                                            <div class="user-email">
+                                                <span class="text-icon icon-info xs"><i class="fas fa-envelope"></i></span><?= htmlspecialchars($activity['email']) ?>
+                                            </div>
+                                        </div>
+                                        <div class="text-end">
+                                            <small class="text-muted">
+                                                <span class="text-icon icon-warning xs"><i class="fas fa-clock"></i></span>
+                                                <?= date('H:i', strtotime($activity['last_activity'])) ?>
+                                            </small>
+                                            <div class="small text-muted">
+                                                <span class="text-icon icon-info xs"><i class="fas fa-calendar"></i></span>
+                                                <?= date('d/m/Y', strtotime($activity['last_activity'])) ?>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <?php endforeach; ?>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- User Distribution Chart -->
+                <div class="dashboard-widget">
+                    <div class="widget-header">
+                        <h5>
+                            <span class="section-icon icon-info"><i class="fas fa-chart-pie"></i></span>
+                            การกระจายตัวของผู้ใช้งาน
+                        </h5>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-4 text-center">
+                            <div class="display-4 text-primary fw-bold"><?= $stats['total_users'] ?></div>
+                            <div class="text-muted fw-medium">ผู้ใช้งานทั้งหมด</div>
+                        </div>
+                        <div class="col-md-8">
+                            <div class="chart-container">
+                                <div id="userDistributionChart"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </main>
+        </div>
+    </div>
+
+    <!-- Export Modal -->
+    <div class="modal fade" id="exportModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">
+                        <span class="modal-icon icon-info me-2"><i class="fas fa-file-export"></i></span>
+                        ส่งออกข้อมูล
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="list-group">
+                        <a href="#" class="list-group-item list-group-item-action d-flex align-items-center">
+                            <span class="export-icon icon-success me-3"><i class="fas fa-file-excel"></i></span>
+                            <span class="fw-medium">ส่งออกเป็น Excel</span>
+                        </a>
+                        <a href="#" class="list-group-item list-group-item-action d-flex align-items-center">
+                            <span class="export-icon icon-danger me-3"><i class="fas fa-file-pdf"></i></span>
+                            <span class="fw-medium">ส่งออกเป็น PDF</span>
+                        </a>
+                        <a href="#" class="list-group-item list-group-item-action d-flex align-items-center">
+                            <span class="export-icon icon-primary me-3"><i class="fas fa-file-csv"></i></span>
+                            <span class="fw-medium">ส่งออกเป็น CSV</span>
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- JavaScript Libraries -->
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/apexcharts@3.35.0/dist/apexcharts.min.js"></script>
+    
+    <script>
+        // อัพเดตเวลาปัจจุบัน
+        function updateCurrentTime() {
+            const now = new Date();
+            const timeStr = now.toLocaleTimeString('th-TH', { 
+                hour: '2-digit', 
+                minute: '2-digit' 
+            });
+            $('#current-time').contents().last()[0].textContent = ' ' + timeStr;
+        }
+        
+        // อัพเดตเวลาทุกนาที
+        setInterval(updateCurrentTime, 60000);
+        
+        // User Distribution Chart
+        document.addEventListener('DOMContentLoaded', function() {
+            const userDistributionChart = new ApexCharts(document.querySelector("#userDistributionChart"), {
+                series: [<?= $stats['active_users'] ?>, <?= $stats['inactive_users'] ?>, <?= $stats['admin_users'] ?>],
+                chart: {
+                    type: 'donut',
+                    height: 250
+                },
+                labels: ['เปิดใช้งาน', 'ปิดใช้งาน', 'ผู้ดูแลระบบ'],
+                colors: ['#28a745', '#dc3545', '#ffc107'],
+                legend: {
+                    position: 'bottom'
+                },
+                plotOptions: {
+                    pie: {
+                        donut: {
+                            size: '65%',
+                            labels: {
+                                show: true,
+                                total: {
+                                    show: true,
+                                    label: 'ทั้งหมด',
+                                    color: '#6c757d',
+                                    formatter: function(w) {
+                                        return w.globals.seriesTotals.reduce((a, b) => a + b, 0)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+                dataLabels: {
+                    enabled: true,
+                    formatter: function(val) {
+                        return Math.round(val) + "%"
+                    }
+                },
+                responsive: [{
+                    breakpoint: 480,
+                    options: {
+                        chart: {
+                            height: 200
+                        },
+                        legend: {
+                            position: 'bottom'
+                        }
+                    }
+                }]
+            });
+            
+            userDistributionChart.render();
+        });
+        
+        //  Animation for stat cards on scroll
+        function animateOnScroll() {
+            const cards = document.querySelectorAll('.stat-card');
+            cards.forEach(card => {
+                const cardPosition = card.getBoundingClientRect().top;
+                const screenPosition = window.innerHeight / 1.3;
+                
+                if (cardPosition < screenPosition) {
+                    card.style.opacity = '1';
+                    card.style.transform = 'translateY(0)';
+                }
+            });
+        }
+        
+        // Set initial state for animation
+        document.querySelectorAll('.stat-card').forEach(card => {
+            card.style.opacity = '0';
+            card.style.transform = 'translateY(20px)';
+            card.style.transition = 'opacity 0.5s ease, transform 0.5s ease';
+        });
+        
+        window.addEventListener('scroll', animateOnScroll);
+        window.addEventListener('load', animateOnScroll);
+    </script>
+</body>
+</html>

@@ -1,0 +1,47 @@
+# เปิดการทำงานของ RewriteEngine
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+
+    # อนุญาตให้เข้าถึงไฟล์ login.php ได้เสมอ
+    RewriteCond %{REQUEST_URI} ^/login\.php$ [NC]
+    RewriteRule ^ - [L]
+</IfModule>
+
+# อนุญาตให้เข้าถึงไฟล์ php ทั้งหมดในโฟลเดอร์นี้
+<FilesMatch "\.php$">
+    Require all granted
+</FilesMatch>
+
+# ===== Production security: ห้ามเปิดไฟล์เหล่านี้ผ่านเว็บ =====
+# ป้องกันไฟล์กำหนดค่าและข้อมูลลับทั้งหมด
+<FilesMatch "^\.env">
+    Require all denied
+</FilesMatch>
+<FilesMatch "^\.env\..+">
+    Require all denied
+</FilesMatch>
+
+# ป้องกันโฟลเดอร์ .git (ไม่ควรให้เข้าถึงผ่าน HTTP)
+<IfModule mod_alias.c>
+    RedirectMatch 404 ^/\.git(/|$)
+</IfModule>
+
+# ป้องกันไฟล์ระบบ macOS
+<FilesMatch "^\.DS_Store">
+    Require all denied
+</FilesMatch>
+
+# ป้องกันไฟล์ phpinfo.php (เปิดเผยข้อมูลเซิร์ฟเวอร์)
+<FilesMatch "^phpinfo\.php$">
+    Require all denied
+</FilesMatch>
+
+# ป้องกันไฟล์สำรองทุกชนิด
+<FilesMatch "\.backup$">
+    Require all denied
+</FilesMatch>
+
+# ไฟล์ helper ไม่ควรถูกเรียกผ่าน URL โดยตรง
+<FilesMatch "^mail_helper\.php$">
+    Require all denied
+</FilesMatch>
