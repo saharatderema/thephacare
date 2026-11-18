@@ -7,7 +7,7 @@ declare(strict_types=1);
  */
 
 // ───────── ค่าตั้งต้นของหน่วยงาน (แก้ได้ที่นี่ที่เดียว) ─────────
-const ORG_NAME        = 'สำนักงานสาธารณสุขอำเภอเทพา2';
+const ORG_NAME        = 'สำนักงานสาธารณสุขอำเภอเทพา2222';
 const ORG_PROVINCE    = 'จังหวัดสงขลา';
 const APP_VERSION     = '3.0.1';
 const SESSION_TIMEOUT = 900;   // วินาที (15 นาที)
