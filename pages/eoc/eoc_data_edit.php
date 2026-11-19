@@ -368,7 +368,7 @@ if (!$master_stale && isset($_SESSION[$master_cache_key]['data'])) {
     }
 
     try { $gstatuses = $pdo->query("SELECT gstatus_id, gstatus_name FROM eoc_mas_gstatus WHERE is_active = 1 OR is_active IS NULL ORDER BY display_order ASC, gstatus_id ASC")->fetchAll(PDO::FETCH_ASSOC); } catch (PDOException $e) {}
-    try { $emergency_levels = $pdo->query("SELECT emergency_code, emergency_name FROM eoc_emergency_level ORDER BY emergency_code ASC")->fetchAll(PDO::FETCH_ASSOC); } catch (PDOException $e) {}
+    try { $emergency_levels = $pdo->query("SELECT emergency_code, emergency_name, emergency_color FROM eoc_emergency_level ORDER BY emergency_code ASC")->fetchAll(PDO::FETCH_ASSOC); } catch (PDOException $e) {}
 
     $_SESSION[$master_cache_key] = array(
         't' => time(),
@@ -601,6 +601,12 @@ $time_left_formatted = sprintf('%02d:%02d', floor($time_left / 60), $time_left %
 
 $selected_gstatus = isset($person['gstatus']) && $person['gstatus'] !== '' ? $person['gstatus'] : $group_code;
 $selected_emg     = isset($person['emergency_code']) ? $person['emergency_code'] : '';
+$selected_emg_row = null;
+foreach ($emergency_levels as $__lvl) {
+    if ($__lvl['emergency_code'] === $selected_emg) { $selected_emg_row = $__lvl; break; }
+}
+$selected_emg_color = ($selected_emg_row && !empty($selected_emg_row['emergency_color'])) ? $selected_emg_row['emergency_color'] : '#6B7280';
+$selected_emg_name  = ($selected_emg_row) ? $selected_emg_row['emergency_name'] : '';
 $is_pregnancy_view = ($selected_gstatus === PREGNANT_GSTATUS);
 $current_mom_edc   = isset($person['mom_edc']) ? (string)$person['mom_edc'] : '';
 $current_mom_note  = isset($person['mom_note']) ? (string)$person['mom_note'] : '';
@@ -729,6 +735,10 @@ button{cursor:pointer;border:0;background:none;color:inherit}
 .fld[readonly],.fld:disabled{background:#F1F5F9;color:#475569;cursor:not-allowed}
 textarea.fld{resize:vertical;min-height:100px;font-family:inherit;line-height:1.55}
 .hint{font-size:.72rem;color:#9CA3AF;margin-top:.3rem}
+
+.emg-chip{display:inline-flex;align-items:center;gap:.5rem;margin-top:.55rem;padding:.45rem .85rem;border-radius:.8rem;border:1.5px solid rgba(0,0,0,.08);background:#fff;font-size:.82rem;font-weight:700;color:#111827;box-shadow:0 1px 2px rgba(0,0,0,.04)}
+.emg-chip.is-empty{display:none}
+.emg-dot{width:10px;height:10px;flex:none;border-radius:50%;box-shadow:0 0 0 1px rgba(0,0,0,.15)}
 
 .pregnancy-card{border:2px solid #FCE7F3;background:linear-gradient(180deg, #FEF2F7 0%, #FFFFFF 60%)}
 .pregnancy-card.hidden{display:none}
@@ -1001,11 +1011,17 @@ a:focus-visible,button:focus-visible,input:focus-visible{outline:2px solid var(-
                         <select id="f_emg" name="emergency_code" class="fld">
                             <option value="">-- เลือกระดับความเร่งด่วน --</option>
                             <?php foreach ($emergency_levels as $lvl): ?>
-                            <option value="<?php echo eoc_h($lvl['emergency_code']); ?>" <?php echo $selected_emg === $lvl['emergency_code'] ? 'selected' : ''; ?>>
-                                <?php echo eoc_h($lvl['emergency_name']); ?>
+                            <option value="<?php echo eoc_h($lvl['emergency_code']); ?>" <?php echo $selected_emg === $lvl['emergency_code'] ? 'selected' : ''; ?>
+                                style="color:<?php echo eoc_h($lvl['emergency_color'] ?? '#6B7280'); ?>;font-weight:600">
+                                ● <?php echo eoc_h($lvl['emergency_name']); ?>
                             </option>
                             <?php endforeach; ?>
                         </select>
+                        <div id="emgChip" class="emg-chip<?php echo $selected_emg === '' ? ' is-empty' : ''; ?>">
+                            <span class="emg-dot" style="background:<?php echo eoc_h($selected_emg_color); ?>"></span>
+                            <span id="emgChipText"><?php echo eoc_h($selected_emg_name); ?></span>
+                        </div>
+                        <p class="hint">สีแสดงระดับความเร่งด่วนจากตาราง thephad_eds.eoc_emergency_level</p>
                     </div>
                 </div>
 
@@ -1139,6 +1155,23 @@ var momEdcEl  = $('f_mom_edc');
 var momNoteEl = $('f_mom_note');
 var momCounterEl = $('momNoteCounter');
 var edcPreview = $('edcPreview');
+
+var emgColors   = <?php echo json_encode(array_column($emergency_levels, 'emergency_color', 'emergency_code'), JSON_UNESCAPED_UNICODE); ?>;
+var emgSelect   = $('f_emg');
+var emgChip     = $('emgChip');
+var emgChipText = $('emgChipText');
+function updateEmgChip(){
+    if(!emgSelect || !emgChip || !emgChipText) return;
+    var code = emgSelect.value;
+    if(code === ''){ emgChip.classList.add('is-empty'); return; }
+    var color = emgColors[code] || '#6B7280';
+    var label = (emgSelect.options[emgSelect.selectedIndex] && emgSelect.options[emgSelect.selectedIndex].text) || '';
+    emgChip.querySelector('.emg-dot').style.background = color;
+    emgChipText.textContent = label.replace(/^●\s*/, '');
+    emgChip.classList.remove('is-empty');
+}
+if(emgSelect) emgSelect.addEventListener('change', updateEmgChip);
+updateEmgChip();
 
 function updateMomCounter() {
     if (!momNoteEl || !momCounterEl) return;
